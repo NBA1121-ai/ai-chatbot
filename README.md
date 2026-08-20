@@ -6,6 +6,8 @@
 ![Flask](https://img.shields.io/badge/Flask-3.x-green)
 ![Gemini](https://img.shields.io/badge/Google%20Gemini-3.6%20Flash-orange)
 
+![Скриншот](screenshot.png)
+
 ## Возможности
 
 - Общение с AI на любом языке
