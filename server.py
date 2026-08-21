@@ -2,8 +2,6 @@ import sys
 sys.setrecursionlimit(3000)
 
 from flask import Flask, request, jsonify, send_from_directory
-from google import genai
-from google.genai import types
 from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
 import requests
@@ -14,7 +12,7 @@ import datetime
 app = Flask(__name__)
 
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
-client = genai.Client(api_key=API_KEY)
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={API_KEY}"
 
 MEMORY_FILE = "memory.json"
 
@@ -45,8 +43,7 @@ def save_memory_to_file(memory_list):
 
 # --- Tool functions ---
 
-def web_search(query: str) -> str:
-    """Search the internet using DuckDuckGo."""
+def web_search(query):
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=5))
@@ -60,8 +57,7 @@ def web_search(query: str) -> str:
         return f"Ошибка поиска: {str(e)}"
 
 
-def read_webpage(url: str) -> str:
-    """Read and extract text from a webpage."""
+def read_webpage(url):
     try:
         resp = requests.get(url, timeout=10, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -76,8 +72,7 @@ def read_webpage(url: str) -> str:
         return f"Ошибка чтения страницы: {str(e)}"
 
 
-def save_memory(fact: str, category: str = "general") -> str:
-    """Save a fact to long-term memory."""
+def save_memory(fact, category="general"):
     memory = load_memory()
     entry = {
         "fact": fact,
@@ -89,8 +84,7 @@ def save_memory(fact: str, category: str = "general") -> str:
     return f"Сохранено в память: {fact}"
 
 
-def get_memory() -> str:
-    """Retrieve all saved knowledge from memory."""
+def get_memory():
     memory = load_memory()
     if not memory:
         return "Память пуста."
@@ -100,62 +94,73 @@ def get_memory() -> str:
     return "\n".join(output)
 
 
-# --- Tool definitions for Gemini ---
-
-tools = [
-    types.Tool(function_declarations=[
-        types.FunctionDeclaration(
-            name="web_search",
-            description="Search the internet for current information, facts, news, or any topic. Use this when you need up-to-date information.",
-            parameters=types.Schema(
-                type="OBJECT",
-                properties={
-                    "query": types.Schema(type="STRING", description="Search query")
-                },
-                required=["query"]
-            )
-        ),
-        types.FunctionDeclaration(
-            name="read_webpage",
-            description="Read and extract text content from a webpage URL.",
-            parameters=types.Schema(
-                type="OBJECT",
-                properties={
-                    "url": types.Schema(type="STRING", description="URL of the webpage to read")
-                },
-                required=["url"]
-            )
-        ),
-        types.FunctionDeclaration(
-            name="save_memory",
-            description="Save an important fact or piece of knowledge to long-term memory for future reference.",
-            parameters=types.Schema(
-                type="OBJECT",
-                properties={
-                    "fact": types.Schema(type="STRING", description="The fact or knowledge to save"),
-                    "category": types.Schema(type="STRING", description="Category: science, history, tech, user_info, general")
-                },
-                required=["fact"]
-            )
-        ),
-        types.FunctionDeclaration(
-            name="get_memory",
-            description="Retrieve all previously saved knowledge from long-term memory.",
-            parameters=types.Schema(
-                type="OBJECT",
-                properties={},
-                required=[]
-            )
-        ),
-    ])
-]
-
 TOOL_FUNCTIONS = {
     "web_search": lambda args: web_search(args["query"]),
     "read_webpage": lambda args: read_webpage(args["url"]),
     "save_memory": lambda args: save_memory(args["fact"], args.get("category", "general")),
     "get_memory": lambda args: get_memory(),
 }
+
+TOOLS_SCHEMA = [
+    {
+        "function_declarations": [
+            {
+                "name": "web_search",
+                "description": "Search the internet for current information, facts, news.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "query": {"type": "STRING", "description": "Search query"}
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
+                "name": "read_webpage",
+                "description": "Read and extract text content from a webpage URL.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "url": {"type": "STRING", "description": "URL of the webpage"}
+                    },
+                    "required": ["url"]
+                }
+            },
+            {
+                "name": "save_memory",
+                "description": "Save a fact to long-term memory for future reference.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "fact": {"type": "STRING", "description": "The fact to save"},
+                        "category": {"type": "STRING", "description": "Category: science, history, tech, user_info, general"}
+                    },
+                    "required": ["fact"]
+                }
+            },
+            {
+                "name": "get_memory",
+                "description": "Retrieve all saved knowledge from long-term memory.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        ]
+    }
+]
+
+
+def call_gemini(contents):
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": contents,
+        "tools": TOOLS_SCHEMA,
+    }
+    resp = requests.post(GEMINI_URL, json=payload, timeout=60)
+    resp.raise_for_status()
+    return resp.json()
 
 
 @app.route("/")
@@ -172,75 +177,55 @@ def chat():
         return jsonify({"error": "Нет сообщений"}), 400
 
     try:
-        # Build contents for Gemini
         contents = []
         for msg in messages:
             role = "user" if msg["role"] == "user" else "model"
-            contents.append(types.Content(
-                role=role,
-                parts=[types.Part.from_text(text=msg["content"])]
-            ))
+            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
 
-        # Call Gemini with tools
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                tools=tools,
-            ),
-        )
+        # Call Gemini and handle tool calls
+        for _ in range(3):
+            result = call_gemini(contents)
 
-        # Handle tool calls in a loop
-        max_iterations = 3
-        iteration = 0
+            candidates = result.get("candidates", [])
+            if not candidates:
+                return jsonify({"reply": "Не удалось получить ответ."})
 
-        while iteration < max_iterations:
-            parts = response.candidates[0].content.parts if response.candidates else []
-            function_calls = [p for p in parts if p.function_call]
+            parts = candidates[0].get("content", {}).get("parts", [])
+            function_calls = [p for p in parts if "functionCall" in p]
 
             if not function_calls:
-                break
+                # No tool calls — extract text reply
+                text_parts = [p.get("text", "") for p in parts if "text" in p]
+                reply = "\n".join(text_parts) or "Не удалось получить ответ."
+                return jsonify({"reply": reply})
 
-            function_responses = []
-            for part in function_calls:
-                fn_name = part.function_call.name
-                fn_args = dict(part.function_call.args) if part.function_call.args else {}
+            # Execute tools and continue
+            contents.append(candidates[0]["content"])
+
+            func_response_parts = []
+            for fc in function_calls:
+                fn_name = fc["functionCall"]["name"]
+                fn_args = fc["functionCall"].get("args", {})
 
                 try:
                     if fn_name in TOOL_FUNCTIONS:
-                        result = TOOL_FUNCTIONS[fn_name](fn_args)
+                        tool_result = TOOL_FUNCTIONS[fn_name](fn_args)
                     else:
-                        result = f"Unknown function: {fn_name}"
-                except Exception as tool_err:
-                    result = f"Tool error: {str(tool_err)}"
+                        tool_result = f"Unknown function: {fn_name}"
+                except Exception as e:
+                    tool_result = f"Tool error: {str(e)}"
 
-                function_responses.append(types.Part.from_function_response(
-                    name=fn_name,
-                    response={"result": result}
-                ))
+                func_response_parts.append({
+                    "functionResponse": {
+                        "name": fn_name,
+                        "response": {"result": tool_result}
+                    }
+                })
 
-            contents.append(response.candidates[0].content)
-            contents.append(types.Content(
-                role="user",
-                parts=function_responses
-            ))
+            contents.append({"role": "user", "parts": func_response_parts})
 
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    tools=tools,
-                ),
-            )
-            iteration += 1
+        return jsonify({"reply": "Не удалось получить ответ."})
 
-        reply = response.text if response.text else "Не удалось получить ответ."
-        return jsonify({"reply": reply})
-
-    except RecursionError:
-        return jsonify({"reply": "Извините, запрос оказался слишком сложным. Попробуйте переформулировать."}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
