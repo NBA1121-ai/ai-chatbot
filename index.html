@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Чат-бот | Поиск в интернете</title>
+    <title>J.A.R.V.I.S | AI Ассистент</title>
     <style>
         * {
             margin: 0;
@@ -347,8 +347,8 @@
 </head>
 <body>
     <div class="header">
-        <div class="logo">AI</div>
-        <h1>AI Чат-бот</h1>
+        <div class="logo">J</div>
+        <h1>J.A.R.V.I.S</h1>
         <div class="status">
             <span class="dot"></span>
             Онлайн
@@ -357,7 +357,7 @@
 
     <div class="chat-container" id="chat">
         <div class="welcome" id="welcome">
-            <h2>Привет! Я AI-ассистент</h2>
+            <h2>Привет! Я J.A.R.V.I.S</h2>
             <p>Я умею искать в интернете, читать сайты и запоминать информацию</p>
             <div class="suggestions">
                 <div class="suggestion" onclick="useSuggestion(this)">Что сегодня в новостях?</div>
@@ -368,7 +368,7 @@
         </div>
 
         <div class="typing-indicator" id="typing">
-            <div class="avatar" style="background: linear-gradient(135deg, #7c3aed, #a855f7); color: white;">AI</div>
+            <div class="avatar" style="background: linear-gradient(135deg, #7c3aed, #a855f7); color: white;">J</div>
             <div class="typing-dots">
                 <span></span><span></span><span></span>
             </div>
@@ -425,7 +425,7 @@
 
             const avatar = document.createElement('div');
             avatar.className = 'avatar';
-            avatar.textContent = role === 'user' ? 'Я' : 'AI';
+            avatar.textContent = role === 'user' ? 'Я' : 'J';
 
             const bubble = document.createElement('div');
             bubble.className = 'bubble';
