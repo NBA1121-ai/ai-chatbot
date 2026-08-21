@@ -1,6 +1,8 @@
-# AI Чат-бот
+# J.A.R.V.I.S — AI Ассистент
 
 Умный веб-чат-бот с доступом к интернету, чтением сайтов и долговременной памятью. Красивый тёмный интерфейс, бэкенд на Flask, AI на базе Google Gemini 3.6 Flash.
+
+**Демо:** [beka2121.pythonanywhere.com](https://beka2121.pythonanywhere.com)
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![Flask](https://img.shields.io/badge/Flask-3.x-green)
