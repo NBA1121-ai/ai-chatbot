@@ -1,3 +1,6 @@
+import sys
+sys.setrecursionlimit(3000)
+
 from flask import Flask, request, jsonify, send_from_directory
 from google import genai
 from google.genai import types
@@ -189,41 +192,40 @@ def chat():
         )
 
         # Handle tool calls in a loop
-        max_iterations = 5
+        max_iterations = 3
         iteration = 0
 
-        while response.candidates[0].content.parts and iteration < max_iterations:
-            has_function_call = False
+        while iteration < max_iterations:
+            parts = response.candidates[0].content.parts if response.candidates else []
+            function_calls = [p for p in parts if p.function_call]
+
+            if not function_calls:
+                break
+
             function_responses = []
+            for part in function_calls:
+                fn_name = part.function_call.name
+                fn_args = dict(part.function_call.args) if part.function_call.args else {}
 
-            for part in response.candidates[0].content.parts:
-                if part.function_call:
-                    has_function_call = True
-                    fn_name = part.function_call.name
-                    fn_args = dict(part.function_call.args) if part.function_call.args else {}
-
-                    # Execute the tool
+                try:
                     if fn_name in TOOL_FUNCTIONS:
                         result = TOOL_FUNCTIONS[fn_name](fn_args)
                     else:
                         result = f"Unknown function: {fn_name}"
+                except Exception as tool_err:
+                    result = f"Tool error: {str(tool_err)}"
 
-                    function_responses.append(types.Part.from_function_response(
-                        name=fn_name,
-                        response={"result": result}
-                    ))
+                function_responses.append(types.Part.from_function_response(
+                    name=fn_name,
+                    response={"result": result}
+                ))
 
-            if not has_function_call:
-                break
-
-            # Add model's response and tool results to contents
             contents.append(response.candidates[0].content)
             contents.append(types.Content(
                 role="user",
                 parts=function_responses
             ))
 
-            # Call Gemini again with tool results
             response = client.models.generate_content(
                 model="gemini-3.6-flash",
                 contents=contents,
@@ -234,9 +236,11 @@ def chat():
             )
             iteration += 1
 
-        reply = response.text or "Не удалось получить ответ."
+        reply = response.text if response.text else "Не удалось получить ответ."
         return jsonify({"reply": reply})
 
+    except RecursionError:
+        return jsonify({"reply": "Извините, запрос оказался слишком сложным. Попробуйте переформулировать."}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
